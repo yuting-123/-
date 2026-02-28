@@ -1,0 +1,17 @@
+{
+"name": "車牌辨識紀錄助手",
+"short_name": "車牌紀錄",
+"description": "專業的車牌管理與紀錄系統",
+"start_url": "./index.html",
+"display": "standalone",
+"background_color": "#f8fafc",
+"theme_color": "#2563eb",
+"icons": [
+{
+"src": "https://cdn-icons-png.flaticon.com/512/743/743917.png",
+"sizes": "512x512",
+"type": "image/png",
+"purpose": "any maskable"
+}
+]
+}
