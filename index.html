@@ -1,416 +1,333 @@
-import React, { useState, useMemo } from 'react';
-import { Camera, Search, Trash2, Car, Palette, Clipboard, Image as ImageIcon, Video, ChevronLeft, Save, Plus, Tag, LayoutGrid, History, Check, Settings2, FolderOpen } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>車牌辨識管理系統</title>
+    <!-- 載入實用的 CSS 與 框架 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 載入圖示庫 -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        
+        body { 
+            font-family: 'Noto Sans TC', sans-serif; 
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
 
-const App = () => {
-  // 頁面導覽狀態: 'add', 'list', 'details', 'category'
-  const [currentView, setCurrentView] = useState('add');
-  
-  // 資料狀態
-  const [records, setRecords] = useState([]);
-  const [categories, setCategories] = useState(['一般', '公務', '訪客', '違規', '黑名單']);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  
-  // 檢視狀態
-  const [selectedRecordId, setSelectedRecordId] = useState(null);
-  const [viewingCategory, setViewingCategory] = useState(null); // 用於在分類頁面查看特定分類
-  const [searchQuery, setSearchQuery] = useState('');
+        /* 平滑過渡動畫 */
+        .page-enter { animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp { 
+            from { opacity: 0; transform: translateY(20px); } 
+            to { opacity: 1; transform: translateY(0); } 
+        }
 
-  // 表單狀態 (新增用)
-  const [formData, setFormData] = useState({
-    plate: '',
-    brand: '',
-    model: '',
-    color: '',
-    note: '',
-    category: '一般',
-    mediaType: 'image',
-    mediaUrl: null
-  });
+        /* 隱藏捲軸但保持滾動 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-  // 編輯狀態 (明細頁用)
-  const [editData, setEditData] = useState(null);
+        /* 輸入框聚焦效果 */
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
 
-  // 正規化車牌邏輯
-  const normalizePlate = (plate) => {
-    return plate.replace(/[\s-]/g, '').toUpperCase();
-  };
+    <script type="text/babel">
+        const { useState, useMemo, useEffect } = React;
+        
+        // 圖示組件
+        const Icon = ({ name, size = 24, className = "" }) => {
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [name]);
+            return <i data-lucide={name} style={{width: size, height: size}} className={className}></i>;
+        };
 
-  // 檔案處理
-  const handleFileChange = (e, isEdit = false) => {
-    const file = e.target.files[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      const type = file.type.startsWith('video') ? 'video' : 'image';
-      if (isEdit) {
-        setEditData({ ...editData, mediaUrl: url, mediaType: type });
-      } else {
-        setFormData({ ...formData, mediaUrl: url, mediaType: type });
-      }
-    }
-  };
+        const App = () => {
+            const [currentView, setCurrentView] = useState('add');
+            const [records, setRecords] = useState([]);
+            const [categories, setCategories] = useState(['一般', '公務', '訪客', '違規', '黑名單']);
+            const [newCategoryName, setNewCategoryName] = useState('');
+            const [viewingCategory, setViewingCategory] = useState(null);
+            const [searchQuery, setSearchQuery] = useState('');
+            const [editData, setEditData] = useState(null);
 
-  // 新增紀錄
-  const handleAddSubmit = (e) => {
-    e.preventDefault();
-    if (!formData.plate) return;
-    const newRecord = {
-      ...formData,
-      id: Date.now(),
-      timestamp: new Date().toLocaleString(),
-    };
-    setRecords([newRecord, ...records]);
-    setFormData({ plate: '', brand: '', model: '', color: '', note: '', category: categories[0] || '一般', mediaType: 'image', mediaUrl: null });
-    setCurrentView('list');
-  };
+            const [formData, setFormData] = useState({
+                plate: '', brand: '', model: '', color: '', note: '', category: '一般', mediaType: 'image', mediaUrl: null
+            });
 
-  // 儲存編輯
-  const handleUpdateRecord = () => {
-    setRecords(records.map(r => r.id === editData.id ? editData : r));
-    setCurrentView('list');
-  };
+            // 初始化與更新 Lucide
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); });
 
-  // 刪除紀錄
-  const deleteRecord = (id) => {
-    setRecords(records.filter(r => r.id !== id));
-    if (currentView === 'details') setCurrentView('list');
-  };
+            const normalizePlate = (plate) => plate.replace(/[\s-]/g, '').toUpperCase();
 
-  // 分類管理邏輯
-  const addCategory = () => {
-    if (newCategoryName && !categories.includes(newCategoryName)) {
-      setCategories([...categories, newCategoryName]);
-      setNewCategoryName('');
-    }
-  };
+            const handleFileChange = (e, isEdit = false) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const url = URL.createObjectURL(file);
+                    const type = file.type.startsWith('video') ? 'video' : 'image';
+                    if (isEdit) setEditData({ ...editData, mediaUrl: url, mediaType: type });
+                    else setFormData({ ...formData, mediaUrl: url, mediaType: type });
+                }
+            };
 
-  const deleteCategory = (catName) => {
-    setCategories(categories.filter(c => c !== catName));
-    // 將原屬於該分類的紀錄移至一般
-    setRecords(records.map(r => r.category === catName ? { ...r, category: '一般' } : r));
-  };
+            const handleAddSubmit = (e) => {
+                e.preventDefault();
+                if (!formData.plate) return;
+                const newRecord = { ...formData, id: Date.now(), timestamp: new Date().toLocaleString() };
+                setRecords([newRecord, ...records]);
+                setFormData({ plate: '', brand: '', model: '', color: '', note: '', category: categories[0] || '一般', mediaType: 'image', mediaUrl: null });
+                setCurrentView('list');
+            };
 
-  // 查詢過濾
-  const filteredRecords = useMemo(() => {
-    const target = normalizePlate(searchQuery);
-    if (!target) return records;
-    return records.filter(record => normalizePlate(record.plate).includes(target));
-  }, [records, searchQuery]);
+            const handleUpdateRecord = () => {
+                setRecords(records.map(r => r.id === editData.id ? editData : r));
+                setCurrentView('list');
+            };
 
-  // 特定分類下的紀錄
-  const categoryRecords = useMemo(() => {
-    return records.filter(r => r.category === viewingCategory);
-  }, [records, viewingCategory]);
+            const addCategory = () => {
+                if (newCategoryName && !categories.includes(newCategoryName)) {
+                    setCategories([...categories, newCategoryName]);
+                    setNewCategoryName('');
+                }
+            };
 
-  const renderContent = () => {
-    switch (currentView) {
-      case 'add':
-        return (
-          <div className="max-w-xl mx-auto space-y-6 animate-in fade-in duration-300">
-            <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-              <Plus className="text-blue-600" /> 新增車輛紀錄
-            </h2>
-            <form onSubmit={handleAddSubmit} className="space-y-6">
-              <div className="flex justify-center">
-                <label className="relative cursor-pointer group">
-                  <div className="w-48 h-48 rounded-[2rem] border-4 border-dashed border-blue-100 flex flex-col items-center justify-center bg-white shadow-xl group-hover:bg-blue-50 transition-all overflow-hidden">
-                    {formData.mediaUrl ? (
-                      formData.mediaType === 'image' ? <img src={formData.mediaUrl} className="w-full h-full object-cover" alt="preview" /> : <video src={formData.mediaUrl} className="w-full h-full object-cover" />
-                    ) : (
-                      <>
-                        <Camera className="text-blue-400 mb-2" size={48} />
-                        <span className="text-sm text-blue-500 font-bold">拍照 / 錄影</span>
-                      </>
-                    )}
-                  </div>
-                  <input type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={(e) => handleFileChange(e, false)} />
-                </label>
-              </div>
+            const deleteCategory = (catName) => {
+                setCategories(categories.filter(c => c !== catName));
+                setRecords(records.map(r => r.category === catName ? { ...r, category: '一般' } : r));
+            };
 
-              <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-400 ml-1">車牌號碼 (必填)</label>
-                    <input required type="text" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 text-xl font-mono uppercase" placeholder="ABC-1234" value={formData.plate} onChange={(e) => setFormData({...formData, plate: e.target.value})} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-400 ml-1">分類</label>
-                    <select className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 appearance-none font-bold text-slate-700" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}>
-                      {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                    </select>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-400 ml-1">廠牌</label>
-                    <input type="text" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500" placeholder="廠牌" value={formData.brand} onChange={(e) => setFormData({...formData, brand: e.target.value})} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-400 ml-1">型號</label>
-                    <input type="text" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500" placeholder="型號" value={formData.model} onChange={(e) => setFormData({...formData, model: e.target.value})} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-400 ml-1">顏色</label>
-                    <input type="text" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500" placeholder="顏色" value={formData.color} onChange={(e) => setFormData({...formData, color: e.target.value})} />
-                  </div>
-                </div>
+            const filteredRecords = useMemo(() => {
+                const target = normalizePlate(searchQuery);
+                if (!target) return records;
+                return records.filter(record => normalizePlate(record.plate).includes(target));
+            }, [records, searchQuery]);
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 ml-1 uppercase">備註說明</label>
-                  <textarea rows="3" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 resize-none" placeholder="輸入此車輛的詳細資訊..." value={formData.note} onChange={(e) => setFormData({...formData, note: e.target.value})} />
-                </div>
-              </div>
-
-              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-3xl font-black text-lg shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all">
-                儲存車輛紀錄
-              </button>
-            </form>
-          </div>
-        );
-
-      case 'list':
-        return (
-          <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-                <History className="text-blue-600" /> 查詢所有紀錄
-              </h2>
-              <span className="text-xs font-bold bg-slate-200 px-3 py-1 rounded-full text-slate-600">共 {records.length} 筆</span>
-            </div>
-            
-            <div className="relative max-w-xl mx-auto">
-              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                <Search className="text-slate-400" size={20} />
-              </div>
-              <input type="text" placeholder="輸入車牌搜尋 (不限大小寫、空格)..." className="w-full pl-12 pr-4 py-4 rounded-3xl border-none shadow-sm focus:ring-2 focus:ring-blue-500 bg-white text-lg" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredRecords.length === 0 ? (
-                <div className="col-span-full text-center py-20 text-slate-400 bg-white rounded-3xl border-2 border-dashed border-slate-100">
-                  <p className="text-lg">尚無紀錄或找不到結果</p>
-                </div>
-              ) : (
-                filteredRecords.map((record) => (
-                  <div key={record.id} onClick={() => { setSelectedRecordId(record.id); setEditData({...record}); setCurrentView('details'); }} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group">
-                    <div className="w-20 h-20 bg-slate-50 rounded-2xl overflow-hidden flex-shrink-0 border border-slate-50">
-                      {record.mediaUrl ? <img src={record.mediaUrl} className="w-full h-full object-cover" alt="car" /> : <div className="w-full h-full flex items-center justify-center text-slate-300"><Car size={32} /></div>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-[10px] font-black px-2 py-0.5 bg-blue-50 text-blue-600 rounded-lg uppercase">{record.category}</span>
-                        <span className="text-[10px] text-slate-400">{record.timestamp}</span>
-                      </div>
-                      <h3 className="text-xl font-black text-slate-800 tracking-tight uppercase group-hover:text-blue-600 transition-colors">{record.plate}</h3>
-                      <p className="text-sm text-slate-500 truncate font-medium">{record.brand} {record.model} · {record.color}</p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        );
-
-      case 'category':
-        return (
-          <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-300">
-            {viewingCategory ? (
-              <div className="space-y-6 animate-in slide-in-from-left duration-300">
-                <button onClick={() => setViewingCategory(null)} className="flex items-center gap-2 text-blue-600 font-bold hover:underline">
-                  <ChevronLeft size={20} /> 返回分類列表
-                </button>
-                <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-black text-slate-800 flex items-center gap-3">
-                    <FolderOpen className="text-blue-600" /> 分類內容：<span className="text-blue-600">{viewingCategory}</span>
-                  </h2>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {categoryRecords.length === 0 ? (
-                    <div className="col-span-full py-16 bg-white rounded-3xl text-center text-slate-400 italic">此分類目前無任何紀錄</div>
-                  ) : (
-                    categoryRecords.map(record => (
-                      <div key={record.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group">
-                        <div className="flex items-center gap-4">
-                           <div className="w-12 h-12 bg-slate-50 rounded-xl overflow-hidden border">
-                              {record.mediaUrl ? <img src={record.mediaUrl} className="w-full h-full object-cover" /> : <Car className="m-auto h-full text-slate-300" size={20}/>}
-                           </div>
-                           <div>
-                              <p className="font-black text-slate-800 uppercase leading-none mb-1">{record.plate}</p>
-                              <p className="text-xs text-slate-500">{record.brand} {record.color}</p>
-                           </div>
+            return (
+                <div className="flex flex-col h-screen overflow-hidden">
+                    {/* 頂部標題 */}
+                    <header className="bg-white/80 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b sticky top-0 z-40">
+                        <div className="flex items-center gap-2">
+                            <div className="bg-blue-600 p-2 rounded-xl text-white">
+                                <Icon name="car" size={20} />
+                            </div>
+                            <span className="font-black text-xl tracking-tighter text-slate-800">車牌紀錄助手</span>
                         </div>
-                        <button onClick={(e) => { e.stopPropagation(); deleteRecord(record.id); }} className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
-                          <Trash2 size={18} />
+                        <div className="text-[10px] font-black bg-slate-100 px-2 py-1 rounded-full text-slate-500 uppercase tracking-widest">
+                            v2.1 Mobile
+                        </div>
+                    </header>
+
+                    {/* 主內容區域 (可捲動) */}
+                    <main className="flex-1 overflow-y-auto no-scrollbar bg-slate-50 p-5 pb-32">
+                        {currentView === 'add' && (
+                            <div className="page-enter space-y-6">
+                                <h2 className="text-2xl font-black text-slate-800 tracking-tight">新增車輛</h2>
+                                <form onSubmit={handleAddSubmit} className="space-y-6">
+                                    <div className="flex justify-center">
+                                        <label className="relative cursor-pointer active:scale-95 transition-transform">
+                                            <div className="w-44 h-44 rounded-[2.5rem] border-4 border-dashed border-blue-200 flex flex-col items-center justify-center bg-white shadow-xl overflow-hidden">
+                                                {formData.mediaUrl ? (
+                                                    formData.mediaType === 'image' ? <img src={formData.mediaUrl} className="w-full h-full object-cover" /> : <video src={formData.mediaUrl} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <div className="text-center">
+                                                        <div className="bg-blue-50 p-4 rounded-full mb-2 inline-block">
+                                                            <Icon name="camera" className="text-blue-600" size={32} />
+                                                        </div>
+                                                        <p className="text-xs text-blue-600 font-bold">點擊拍照或錄影</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <input type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={e => handleFileChange(e)} />
+                                        </label>
+                                    </div>
+
+                                    <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 space-y-5">
+                                        <div className="grid grid-cols-1 gap-5">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">車牌號碼 (必填)</label>
+                                                <input required type="text" className="w-full px-5 py-4 bg-slate-50 rounded-2xl border-none uppercase font-mono text-2xl font-bold text-blue-600 tracking-widest" placeholder="ABC-1234" value={formData.plate} onChange={e => setFormData({...formData, plate: e.target.value})} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">分類</label>
+                                                <select className="w-full px-5 py-4 bg-slate-50 rounded-2xl border-none font-bold text-slate-700 appearance-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                                                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <input type="text" placeholder="廠牌" className="w-full px-5 py-3 bg-slate-50 rounded-2xl border-none text-sm font-bold" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} />
+                                            <input type="text" placeholder="顏色" className="w-full px-5 py-3 bg-slate-50 rounded-2xl border-none text-sm font-bold" value={formData.color} onChange={e => setFormData({...formData, color: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">備註</label>
+                                            <textarea rows="3" className="w-full px-5 py-3 bg-slate-50 rounded-2xl border-none resize-none text-sm" placeholder="輸入詳細資訊..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
+                                        </div>
+                                    </div>
+                                    <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black text-lg shadow-xl shadow-blue-200 active:scale-95 transition-all">
+                                        完成並儲存
+                                    </button>
+                                </form>
+                            </div>
+                        )}
+
+                        {currentView === 'list' && (
+                            <div className="page-enter space-y-5">
+                                <h2 className="text-2xl font-black text-slate-800 tracking-tight">紀錄查詢</h2>
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
+                                        <Icon name="search" size={20} className="text-slate-400" />
+                                    </div>
+                                    <input type="text" placeholder="搜尋車牌 (不限大小寫/空格)..." className="w-full pl-14 pr-6 py-4 rounded-2xl border-none shadow-sm bg-white font-medium" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                                </div>
+                                
+                                <div className="grid grid-cols-1 gap-4">
+                                    {filteredRecords.length === 0 ? (
+                                        <div className="text-center py-20 text-slate-300">
+                                            <Icon name="inbox" size={48} className="mx-auto mb-2 opacity-20" />
+                                            <p className="font-bold">找不到相關紀錄</p>
+                                        </div>
+                                    ) : (
+                                        filteredRecords.map(r => (
+                                            <div key={r.id} onClick={() => { setEditData({...r}); setCurrentView('details'); }} className="bg-white p-4 rounded-[1.5rem] shadow-sm border border-slate-100 flex items-center gap-4 active:scale-95 transition-all cursor-pointer">
+                                                <div className="w-20 h-20 bg-slate-50 rounded-2xl overflow-hidden flex-shrink-0 border border-slate-50">
+                                                    {r.mediaUrl ? <img src={r.mediaUrl} className="w-full h-full object-cover" /> : <div className="m-auto h-full flex"><Icon name="car" className="m-auto text-slate-200" size={32} /></div>}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <span className="text-[10px] font-black px-2 py-0.5 bg-blue-50 text-blue-600 rounded-lg uppercase inline-block mb-1">{r.category}</span>
+                                                    <h3 className="text-xl font-black text-slate-800 uppercase leading-tight tracking-tight">{r.plate}</h3>
+                                                    <p className="text-xs text-slate-400 font-bold truncate">{r.brand} · {r.color}</p>
+                                                </div>
+                                                <Icon name="chevron-right" size={20} className="text-slate-300" />
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {currentView === 'category' && (
+                            <div className="page-enter space-y-6">
+                                {viewingCategory ? (
+                                    <div className="space-y-4">
+                                        <button onClick={() => setViewingCategory(null)} className="text-blue-600 font-black flex items-center gap-1 active:scale-95 transition-transform"><Icon name="arrow-left" size={18} /> 返回</button>
+                                        <h2 className="text-2xl font-black">{viewingCategory} <span className="text-sm font-normal text-slate-400">({records.filter(r => r.category === viewingCategory).length} 筆)</span></h2>
+                                        <div className="space-y-3">
+                                            {records.filter(r => r.category === viewingCategory).map(r => (
+                                                <div key={r.id} className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 bg-slate-50 rounded-lg overflow-hidden border">
+                                                            {r.mediaUrl ? <img src={r.mediaUrl} className="w-full h-full object-cover" /> : <Icon name="car" size={16} className="m-auto h-full text-slate-300" />}
+                                                        </div>
+                                                        <span className="font-black uppercase text-slate-700 tracking-tight">{r.plate}</span>
+                                                    </div>
+                                                    <button onClick={() => setRecords(records.filter(rec => rec.id !== r.id))} className="text-red-300 p-2"><Icon name="trash-2" size={18}/></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-6">
+                                        <h2 className="text-2xl font-black tracking-tight">分類管理</h2>
+                                        <div className="bg-white p-4 rounded-2xl shadow-sm border flex gap-3">
+                                            <input type="text" placeholder="新分類..." className="flex-1 bg-slate-50 border-none rounded-xl px-4 font-bold" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} />
+                                            <button onClick={addCategory} className="bg-blue-600 text-white p-3 rounded-xl shadow-lg shadow-blue-100 active:scale-90 transition-all"><Icon name="plus" /></button>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {categories.map(c => (
+                                                <div key={c} onClick={() => setViewingCategory(c)} className="bg-white p-6 rounded-[1.5rem] border border-slate-100 flex flex-col justify-between h-36 active:scale-95 transition-all shadow-sm">
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="bg-blue-50 p-2 rounded-lg text-blue-600"><Icon name="folder" size={20} /></div>
+                                                        <button onClick={(e) => { e.stopPropagation(); deleteCategory(c); }} className="text-slate-200"><Icon name="x" size={16} /></button>
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-black text-lg block">{c}</span>
+                                                        <span className="text-[10px] text-slate-400 font-bold uppercase">{records.filter(r => r.category === c).length} RECORDS</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {currentView === 'details' && editData && (
+                            <div className="page-enter space-y-6">
+                                <div className="flex justify-between items-center">
+                                    <button onClick={() => setCurrentView('list')} className="text-blue-600 font-black flex items-center gap-1 active:scale-95 transition-transform"><Icon name="arrow-left" size={18} /> 返回列表</button>
+                                    <button onClick={handleUpdateRecord} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-black flex items-center gap-2 shadow-lg shadow-blue-100 active:scale-95 transition-all"><Icon name="save" size={18}/> 儲存更新</button>
+                                </div>
+                                <div className="bg-white rounded-[2.5rem] overflow-hidden border shadow-xl">
+                                    <div className="aspect-video bg-slate-900 relative">
+                                        {editData.mediaUrl ? (editData.mediaType === 'image' ? <img src={editData.mediaUrl} className="w-full h-full object-contain" /> : <video src={editData.mediaUrl} controls className="w-full h-full" />) : <div className="w-full h-full flex flex-col items-center justify-center text-slate-600"><Icon name="image" size={48} /><p className="text-xs mt-2">無影像資料</p></div>}
+                                        <label className="absolute bottom-4 right-4 bg-white/20 backdrop-blur-md text-white p-3 rounded-2xl cursor-pointer border border-white/20">
+                                            <Icon name="camera" size={20} />
+                                            <input type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={e => handleFileChange(e, true)} />
+                                        </label>
+                                    </div>
+                                    <div className="p-8 space-y-6">
+                                        <div className="grid grid-cols-1 gap-6">
+                                            <div className="bg-slate-50 p-5 rounded-2xl">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">車牌號碼</label>
+                                                <input className="w-full bg-transparent font-black text-2xl text-blue-700 uppercase border-none p-0 focus:ring-0" value={editData.plate} onChange={e => setEditData({...editData, plate: e.target.value})} />
+                                            </div>
+                                            <div className="bg-slate-50 p-5 rounded-2xl">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">分類類別</label>
+                                                <select className="w-full bg-transparent font-bold border-none p-0 focus:ring-0 text-slate-700 appearance-none" value={editData.category} onChange={e => setEditData({...editData, category: e.target.value})}>
+                                                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">備註說明</label>
+                                                <textarea rows="4" className="w-full bg-slate-50 rounded-2xl border-none p-5 text-sm font-medium leading-relaxed" value={editData.note} onChange={e => setEditData({...editData, note: e.target.value})} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onClick={() => { setRecords(records.filter(r => r.id !== editData.id)); setCurrentView('list'); }} className="w-full py-4 text-red-400 font-black text-sm uppercase tracking-widest active:bg-red-50 rounded-2xl transition-all">刪除此筆紀錄</button>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* 底部行動導覽列 */}
+                    <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t px-8 py-4 flex justify-around items-center z-50 shadow-[0_-10px_25px_rgba(0,0,0,0.05)]">
+                        <button onClick={() => {setCurrentView('add'); setViewingCategory(null);}} className={`flex flex-col items-center gap-1 transition-all ${currentView === 'add' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}>
+                            <div className={`p-2.5 rounded-2xl ${currentView === 'add' ? 'bg-blue-50 shadow-inner' : ''}`}>
+                                <Icon name="plus" size={24} strokeWidth={3} />
+                            </div>
+                            <span className="text-[10px] font-black uppercase tracking-tighter">新增</span>
                         </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-8">
-                <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-                  <Tag className="text-blue-600" /> 分類管理
-                </h2>
-                
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-                  <label className="block text-sm font-bold text-slate-500 mb-3">新增分類名稱</label>
-                  <div className="flex gap-3">
-                    <input type="text" className="flex-1 px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500" placeholder="例如: 重要客戶、員工..." value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCategory()} />
-                    <button onClick={addCategory} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all">
-                      <Plus size={20} /> 新增項目
-                    </button>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {categories.map(cat => (
-                    <div key={cat} onClick={() => setViewingCategory(cat)} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 hover:border-blue-300 hover:shadow-lg transition-all cursor-pointer group flex flex-col justify-between h-40">
-                      <div className="flex justify-between items-start">
-                        <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-all">
-                          <FolderOpen size={24} />
-                        </div>
-                        <button onClick={(e) => { e.stopPropagation(); deleteCategory(cat); }} className="text-slate-200 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-all">
-                          <Trash2 size={20} />
+                        <button onClick={() => {setCurrentView('list'); setViewingCategory(null);}} className={`flex flex-col items-center gap-1 transition-all ${currentView === 'list' || currentView === 'details' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}>
+                            <div className={`p-2.5 rounded-2xl ${currentView === 'list' || currentView === 'details' ? 'bg-blue-50 shadow-inner' : ''}`}>
+                                <Icon name="layout-grid" size={24} strokeWidth={3} />
+                            </div>
+                            <span className="text-[10px] font-black uppercase tracking-tighter">查詢</span>
                         </button>
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-black text-slate-800">{cat}</h3>
-                        <p className="text-xs text-slate-500 font-bold">{records.filter(r => r.category === cat).length} 筆資料</p>
-                      </div>
-                    </div>
-                  ))}
+
+                        <button onClick={() => {setCurrentView('category'); setViewingCategory(null);}} className={`flex flex-col items-center gap-1 transition-all ${currentView === 'category' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}>
+                            <div className={`p-2.5 rounded-2xl ${currentView === 'category' ? 'bg-blue-50 shadow-inner' : ''}`}>
+                                <Icon name="tag" size={24} strokeWidth={3} />
+                            </div>
+                            <span className="text-[10px] font-black uppercase tracking-tighter">分類</span>
+                        </button>
+                    </nav>
                 </div>
-              </div>
-            )}
-          </div>
-        );
+            );
+        };
 
-      case 'details':
-        if (!editData) return null;
-        return (
-          <div className="max-w-3xl mx-auto space-y-6 animate-in zoom-in-95 duration-300">
-            <div className="flex items-center justify-between">
-              <button onClick={() => setCurrentView('list')} className="flex items-center gap-1 text-blue-600 font-bold hover:bg-blue-50 px-3 py-2 rounded-xl transition-all">
-                <ChevronLeft size={20} /> 返回清單
-              </button>
-              <div className="flex gap-2">
-                <button onClick={() => deleteRecord(editData.id)} className="p-3 text-red-400 bg-red-50 rounded-2xl hover:bg-red-100 transition-all">
-                  <Trash2 size={20} />
-                </button>
-                <button onClick={handleUpdateRecord} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all">
-                  <Save size={18} /> 儲存編輯內容
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-[3rem] shadow-xl border border-slate-100 overflow-hidden">
-              <div className="aspect-video bg-slate-900 relative group">
-                {editData.mediaUrl ? (
-                  editData.mediaType === 'image' ? <img src={editData.mediaUrl} className="w-full h-full object-contain" alt="car" /> : <video src={editData.mediaUrl} controls className="w-full h-full" />
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 italic"><ImageIcon size={64} /><p className="mt-2">無影像資料</p></div>
-                )}
-                <label className="absolute bottom-6 right-6 bg-white/20 backdrop-blur-xl text-white p-4 rounded-[1.5rem] cursor-pointer hover:bg-white/40 transition-all border border-white/30">
-                  <Camera size={24} />
-                  <input type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={(e) => handleFileChange(e, true)} />
-                </label>
-              </div>
-
-              <div className="p-10 space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Car size={14} /> 基本辨識資料</h3>
-                      <div className="space-y-4">
-                        <div className="bg-slate-50 p-5 rounded-3xl">
-                          <label className="text-[10px] font-bold text-slate-400 block mb-1">車牌號碼</label>
-                          <input type="text" className="w-full bg-transparent border-none p-0 text-2xl font-black text-blue-700 uppercase focus:ring-0" value={editData.plate} onChange={(e) => setEditData({...editData, plate: e.target.value})} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="bg-slate-50 p-5 rounded-3xl">
-                            <label className="text-[10px] font-bold text-slate-400 block mb-1">廠牌型號</label>
-                            <input type="text" className="w-full bg-transparent border-none p-0 text-sm font-bold text-slate-700 focus:ring-0" value={`${editData.brand} ${editData.model}`} onChange={(e) => {
-                              const parts = e.target.value.split(' ');
-                              setEditData({...editData, brand: parts[0] || '', model: parts.slice(1).join(' ') || ''});
-                            }} />
-                          </div>
-                          <div className="bg-slate-50 p-5 rounded-3xl">
-                            <label className="text-[10px] font-bold text-slate-400 block mb-1">顏色</label>
-                            <input type="text" className="w-full bg-transparent border-none p-0 text-sm font-bold text-slate-700 focus:ring-0" value={editData.color} onChange={(e) => setEditData({...editData, color: e.target.value})} />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Tag size={14} /> 所屬分類</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {categories.map(cat => (
-                          <button key={cat} onClick={() => setEditData({...editData, category: cat})} className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 ${editData.category === cat ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                            {editData.category === cat && <Check size={14} />} {cat}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Clipboard size={14} /> 備註內容</h3>
-                      <textarea rows="4" className="w-full bg-slate-50 border-none rounded-3xl p-5 text-sm text-slate-600 focus:ring-2 focus:ring-blue-500" placeholder="點擊此處更新備註..." value={editData.note} onChange={(e) => setEditData({...editData, note: e.target.value})} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
-      {/* 頂部 Header */}
-      <header className="bg-white px-8 py-5 shadow-sm z-30 sticky top-0 flex items-center justify-between border-b border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="bg-blue-600 p-2.5 rounded-[1rem] text-white shadow-xl shadow-blue-100">
-            <Car size={24} />
-          </div>
-          <span className="font-black text-2xl tracking-tighter text-slate-800">CARLOG WEB</span>
-        </div>
-        <div className="hidden md:flex items-center gap-6 font-bold text-sm text-slate-400">
-           <button onClick={() => setCurrentView('add')} className={`hover:text-blue-600 transition-all ${currentView === 'add' ? 'text-blue-600' : ''}`}>新增紀錄</button>
-           <button onClick={() => setCurrentView('list')} className={`hover:text-blue-600 transition-all ${currentView === 'list' ? 'text-blue-600' : ''}`}>查詢紀錄</button>
-           <button onClick={() => setCurrentView('category')} className={`hover:text-blue-600 transition-all ${currentView === 'category' ? 'text-blue-600' : ''}`}>分類管理</button>
-        </div>
-      </header>
-
-      {/* 主內容區 */}
-      <main className="flex-1 p-6 md:p-12 max-w-6xl mx-auto w-full pb-32">
-        {renderContent()}
-      </main>
-
-      {/* 底部導覽列 (Bottom Navigation - 手機版優化) */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-2xl border-t border-slate-100 px-6 py-4 flex justify-around items-center z-40 shadow-[0_-15px_30px_rgba(0,0,0,0.03)]">
-        <button onClick={() => { setCurrentView('add'); setViewingCategory(null); }} className={`flex flex-col items-center gap-1.5 transition-all ${currentView === 'add' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}>
-          <div className={`p-2.5 rounded-2xl ${currentView === 'add' ? 'bg-blue-50 shadow-inner' : ''}`}><Plus size={26} strokeWidth={3} /></div>
-          <span className="text-[10px] font-black uppercase tracking-widest">新增</span>
-        </button>
-
-        <button onClick={() => { setCurrentView('list'); setViewingCategory(null); }} className={`flex flex-col items-center gap-1.5 transition-all ${currentView === 'list' || currentView === 'details' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}>
-          <div className={`p-2.5 rounded-2xl ${currentView === 'list' || currentView === 'details' ? 'bg-blue-50 shadow-inner' : ''}`}><LayoutGrid size={26} strokeWidth={3} /></div>
-          <span className="text-[10px] font-black uppercase tracking-widest">查詢</span>
-        </button>
-
-        <button onClick={() => { setCurrentView('category'); setViewingCategory(null); }} className={`flex flex-col items-center gap-1.5 transition-all ${currentView === 'category' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}>
-          <div className={`p-2.5 rounded-2xl ${currentView === 'category' ? 'bg-blue-50 shadow-inner' : ''}`}><Tag size={26} strokeWidth={3} /></div>
-          <span className="text-[10px] font-black uppercase tracking-widest">分類</span>
-        </button>
-      </nav>
-    </div>
-  );
-};
-
-export default App;
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
