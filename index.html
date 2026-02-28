@@ -1,0 +1,416 @@
+import React, { useState, useMemo } from 'react';
+import { Camera, Search, Trash2, Car, Palette, Clipboard, Image as ImageIcon, Video, ChevronLeft, Save, Plus, Tag, LayoutGrid, History, Check, Settings2, FolderOpen } from 'lucide-react';
+
+const App = () => {
+  // 頁面導覽狀態: 'add', 'list', 'details', 'category'
+  const [currentView, setCurrentView] = useState('add');
+  
+  // 資料狀態
+  const [records, setRecords] = useState([]);
+  const [categories, setCategories] = useState(['一般', '公務', '訪客', '違規', '黑名單']);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  
+  // 檢視狀態
+  const [selectedRecordId, setSelectedRecordId] = useState(null);
+  const [viewingCategory, setViewingCategory] = useState(null); // 用於在分類頁面查看特定分類
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 表單狀態 (新增用)
+  const [formData, setFormData] = useState({
+    plate: '',
+    brand: '',
+    model: '',
+    color: '',
+    note: '',
+    category: '一般',
+    mediaType: 'image',
+    mediaUrl: null
+  });
+
+  // 編輯狀態 (明細頁用)
+  const [editData, setEditData] = useState(null);
+
+  // 正規化車牌邏輯
+  const normalizePlate = (plate) => {
+    return plate.replace(/[\s-]/g, '').toUpperCase();
+  };
+
+  // 檔案處理
+  const handleFileChange = (e, isEdit = false) => {
+    const file = e.target.files[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      const type = file.type.startsWith('video') ? 'video' : 'image';
+      if (isEdit) {
+        setEditData({ ...editData, mediaUrl: url, mediaType: type });
+      } else {
+        setFormData({ ...formData, mediaUrl: url, mediaType: type });
+      }
+    }
+  };
+
+  // 新增紀錄
+  const handleAddSubmit = (e) => {
+    e.preventDefault();
+    if (!formData.plate) return;
+    const newRecord = {
+      ...formData,
+      id: Date.now(),
+      timestamp: new Date().toLocaleString(),
+    };
+    setRecords([newRecord, ...records]);
+    setFormData({ plate: '', brand: '', model: '', color: '', note: '', category: categories[0] || '一般', mediaType: 'image', mediaUrl: null });
+    setCurrentView('list');
+  };
+
+  // 儲存編輯
+  const handleUpdateRecord = () => {
+    setRecords(records.map(r => r.id === editData.id ? editData : r));
+    setCurrentView('list');
+  };
+
+  // 刪除紀錄
+  const deleteRecord = (id) => {
+    setRecords(records.filter(r => r.id !== id));
+    if (currentView === 'details') setCurrentView('list');
+  };
+
+  // 分類管理邏輯
+  const addCategory = () => {
+    if (newCategoryName && !categories.includes(newCategoryName)) {
+      setCategories([...categories, newCategoryName]);
+      setNewCategoryName('');
+    }
+  };
+
+  const deleteCategory = (catName) => {
+    setCategories(categories.filter(c => c !== catName));
+    // 將原屬於該分類的紀錄移至一般
+    setRecords(records.map(r => r.category === catName ? { ...r, category: '一般' } : r));
+  };
+
+  // 查詢過濾
+  const filteredRecords = useMemo(() => {
+    const target = normalizePlate(searchQuery);
+    if (!target) return records;
+    return records.filter(record => normalizePlate(record.plate).includes(target));
+  }, [records, searchQuery]);
+
+  // 特定分類下的紀錄
+  const categoryRecords = useMemo(() => {
+    return records.filter(r => r.category === viewingCategory);
+  }, [records, viewingCategory]);
+
+  const renderContent = () => {
+    switch (currentView) {
+      case 'add':
+        return (
+          <div className="max-w-xl mx-auto space-y-6 animate-in fade-in duration-300">
+            <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+              <Plus className="text-blue-600" /> 新增車輛紀錄
+            </h2>
+            <form onSubmit={handleAddSubmit} className="space-y-6">
+              <div className="flex justify-center">
+                <label className="relative cursor-pointer group">
+                  <div className="w-48 h-48 rounded-[2rem] border-4 border-dashed border-blue-100 flex flex-col items-center justify-center bg-white shadow-xl group-hover:bg-blue-50 transition-all overflow-hidden">
+                    {formData.mediaUrl ? (
+                      formData.mediaType === 'image' ? <img src={formData.mediaUrl} className="w-full h-full object-cover" alt="preview" /> : <video src={formData.mediaUrl} className="w-full h-full object-cover" />
+                    ) : (
+                      <>
+                        <Camera className="text-blue-400 mb-2" size={48} />
+                        <span className="text-sm text-blue-500 font-bold">拍照 / 錄影</span>
+                      </>
+                    )}
+                  </div>
+                  <input type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={(e) => handleFileChange(e, false)} />
+                </label>
+              </div>
+
+              <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-400 ml-1">車牌號碼 (必填)</label>
+                    <input required type="text" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 text-xl font-mono uppercase" placeholder="ABC-1234" value={formData.plate} onChange={(e) => setFormData({...formData, plate: e.target.value})} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-400 ml-1">分類</label>
+                    <select className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 appearance-none font-bold text-slate-700" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}>
+                      {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-400 ml-1">廠牌</label>
+                    <input type="text" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500" placeholder="廠牌" value={formData.brand} onChange={(e) => setFormData({...formData, brand: e.target.value})} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-400 ml-1">型號</label>
+                    <input type="text" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500" placeholder="型號" value={formData.model} onChange={(e) => setFormData({...formData, model: e.target.value})} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-400 ml-1">顏色</label>
+                    <input type="text" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500" placeholder="顏色" value={formData.color} onChange={(e) => setFormData({...formData, color: e.target.value})} />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 ml-1 uppercase">備註說明</label>
+                  <textarea rows="3" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 resize-none" placeholder="輸入此車輛的詳細資訊..." value={formData.note} onChange={(e) => setFormData({...formData, note: e.target.value})} />
+                </div>
+              </div>
+
+              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-3xl font-black text-lg shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all">
+                儲存車輛紀錄
+              </button>
+            </form>
+          </div>
+        );
+
+      case 'list':
+        return (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+                <History className="text-blue-600" /> 查詢所有紀錄
+              </h2>
+              <span className="text-xs font-bold bg-slate-200 px-3 py-1 rounded-full text-slate-600">共 {records.length} 筆</span>
+            </div>
+            
+            <div className="relative max-w-xl mx-auto">
+              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                <Search className="text-slate-400" size={20} />
+              </div>
+              <input type="text" placeholder="輸入車牌搜尋 (不限大小寫、空格)..." className="w-full pl-12 pr-4 py-4 rounded-3xl border-none shadow-sm focus:ring-2 focus:ring-blue-500 bg-white text-lg" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredRecords.length === 0 ? (
+                <div className="col-span-full text-center py-20 text-slate-400 bg-white rounded-3xl border-2 border-dashed border-slate-100">
+                  <p className="text-lg">尚無紀錄或找不到結果</p>
+                </div>
+              ) : (
+                filteredRecords.map((record) => (
+                  <div key={record.id} onClick={() => { setSelectedRecordId(record.id); setEditData({...record}); setCurrentView('details'); }} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group">
+                    <div className="w-20 h-20 bg-slate-50 rounded-2xl overflow-hidden flex-shrink-0 border border-slate-50">
+                      {record.mediaUrl ? <img src={record.mediaUrl} className="w-full h-full object-cover" alt="car" /> : <div className="w-full h-full flex items-center justify-center text-slate-300"><Car size={32} /></div>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[10px] font-black px-2 py-0.5 bg-blue-50 text-blue-600 rounded-lg uppercase">{record.category}</span>
+                        <span className="text-[10px] text-slate-400">{record.timestamp}</span>
+                      </div>
+                      <h3 className="text-xl font-black text-slate-800 tracking-tight uppercase group-hover:text-blue-600 transition-colors">{record.plate}</h3>
+                      <p className="text-sm text-slate-500 truncate font-medium">{record.brand} {record.model} · {record.color}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
+
+      case 'category':
+        return (
+          <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-300">
+            {viewingCategory ? (
+              <div className="space-y-6 animate-in slide-in-from-left duration-300">
+                <button onClick={() => setViewingCategory(null)} className="flex items-center gap-2 text-blue-600 font-bold hover:underline">
+                  <ChevronLeft size={20} /> 返回分類列表
+                </button>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-black text-slate-800 flex items-center gap-3">
+                    <FolderOpen className="text-blue-600" /> 分類內容：<span className="text-blue-600">{viewingCategory}</span>
+                  </h2>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {categoryRecords.length === 0 ? (
+                    <div className="col-span-full py-16 bg-white rounded-3xl text-center text-slate-400 italic">此分類目前無任何紀錄</div>
+                  ) : (
+                    categoryRecords.map(record => (
+                      <div key={record.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group">
+                        <div className="flex items-center gap-4">
+                           <div className="w-12 h-12 bg-slate-50 rounded-xl overflow-hidden border">
+                              {record.mediaUrl ? <img src={record.mediaUrl} className="w-full h-full object-cover" /> : <Car className="m-auto h-full text-slate-300" size={20}/>}
+                           </div>
+                           <div>
+                              <p className="font-black text-slate-800 uppercase leading-none mb-1">{record.plate}</p>
+                              <p className="text-xs text-slate-500">{record.brand} {record.color}</p>
+                           </div>
+                        </div>
+                        <button onClick={(e) => { e.stopPropagation(); deleteRecord(record.id); }} className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-8">
+                <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+                  <Tag className="text-blue-600" /> 分類管理
+                </h2>
+                
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                  <label className="block text-sm font-bold text-slate-500 mb-3">新增分類名稱</label>
+                  <div className="flex gap-3">
+                    <input type="text" className="flex-1 px-5 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500" placeholder="例如: 重要客戶、員工..." value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCategory()} />
+                    <button onClick={addCategory} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all">
+                      <Plus size={20} /> 新增項目
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {categories.map(cat => (
+                    <div key={cat} onClick={() => setViewingCategory(cat)} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 hover:border-blue-300 hover:shadow-lg transition-all cursor-pointer group flex flex-col justify-between h-40">
+                      <div className="flex justify-between items-start">
+                        <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-all">
+                          <FolderOpen size={24} />
+                        </div>
+                        <button onClick={(e) => { e.stopPropagation(); deleteCategory(cat); }} className="text-slate-200 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-black text-slate-800">{cat}</h3>
+                        <p className="text-xs text-slate-500 font-bold">{records.filter(r => r.category === cat).length} 筆資料</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+
+      case 'details':
+        if (!editData) return null;
+        return (
+          <div className="max-w-3xl mx-auto space-y-6 animate-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between">
+              <button onClick={() => setCurrentView('list')} className="flex items-center gap-1 text-blue-600 font-bold hover:bg-blue-50 px-3 py-2 rounded-xl transition-all">
+                <ChevronLeft size={20} /> 返回清單
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => deleteRecord(editData.id)} className="p-3 text-red-400 bg-red-50 rounded-2xl hover:bg-red-100 transition-all">
+                  <Trash2 size={20} />
+                </button>
+                <button onClick={handleUpdateRecord} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all">
+                  <Save size={18} /> 儲存編輯內容
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-[3rem] shadow-xl border border-slate-100 overflow-hidden">
+              <div className="aspect-video bg-slate-900 relative group">
+                {editData.mediaUrl ? (
+                  editData.mediaType === 'image' ? <img src={editData.mediaUrl} className="w-full h-full object-contain" alt="car" /> : <video src={editData.mediaUrl} controls className="w-full h-full" />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 italic"><ImageIcon size={64} /><p className="mt-2">無影像資料</p></div>
+                )}
+                <label className="absolute bottom-6 right-6 bg-white/20 backdrop-blur-xl text-white p-4 rounded-[1.5rem] cursor-pointer hover:bg-white/40 transition-all border border-white/30">
+                  <Camera size={24} />
+                  <input type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={(e) => handleFileChange(e, true)} />
+                </label>
+              </div>
+
+              <div className="p-10 space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Car size={14} /> 基本辨識資料</h3>
+                      <div className="space-y-4">
+                        <div className="bg-slate-50 p-5 rounded-3xl">
+                          <label className="text-[10px] font-bold text-slate-400 block mb-1">車牌號碼</label>
+                          <input type="text" className="w-full bg-transparent border-none p-0 text-2xl font-black text-blue-700 uppercase focus:ring-0" value={editData.plate} onChange={(e) => setEditData({...editData, plate: e.target.value})} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-slate-50 p-5 rounded-3xl">
+                            <label className="text-[10px] font-bold text-slate-400 block mb-1">廠牌型號</label>
+                            <input type="text" className="w-full bg-transparent border-none p-0 text-sm font-bold text-slate-700 focus:ring-0" value={`${editData.brand} ${editData.model}`} onChange={(e) => {
+                              const parts = e.target.value.split(' ');
+                              setEditData({...editData, brand: parts[0] || '', model: parts.slice(1).join(' ') || ''});
+                            }} />
+                          </div>
+                          <div className="bg-slate-50 p-5 rounded-3xl">
+                            <label className="text-[10px] font-bold text-slate-400 block mb-1">顏色</label>
+                            <input type="text" className="w-full bg-transparent border-none p-0 text-sm font-bold text-slate-700 focus:ring-0" value={editData.color} onChange={(e) => setEditData({...editData, color: e.target.value})} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Tag size={14} /> 所屬分類</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {categories.map(cat => (
+                          <button key={cat} onClick={() => setEditData({...editData, category: cat})} className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 ${editData.category === cat ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                            {editData.category === cat && <Check size={14} />} {cat}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Clipboard size={14} /> 備註內容</h3>
+                      <textarea rows="4" className="w-full bg-slate-50 border-none rounded-3xl p-5 text-sm text-slate-600 focus:ring-2 focus:ring-blue-500" placeholder="點擊此處更新備註..." value={editData.note} onChange={(e) => setEditData({...editData, note: e.target.value})} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
+      {/* 頂部 Header */}
+      <header className="bg-white px-8 py-5 shadow-sm z-30 sticky top-0 flex items-center justify-between border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="bg-blue-600 p-2.5 rounded-[1rem] text-white shadow-xl shadow-blue-100">
+            <Car size={24} />
+          </div>
+          <span className="font-black text-2xl tracking-tighter text-slate-800">CARLOG WEB</span>
+        </div>
+        <div className="hidden md:flex items-center gap-6 font-bold text-sm text-slate-400">
+           <button onClick={() => setCurrentView('add')} className={`hover:text-blue-600 transition-all ${currentView === 'add' ? 'text-blue-600' : ''}`}>新增紀錄</button>
+           <button onClick={() => setCurrentView('list')} className={`hover:text-blue-600 transition-all ${currentView === 'list' ? 'text-blue-600' : ''}`}>查詢紀錄</button>
+           <button onClick={() => setCurrentView('category')} className={`hover:text-blue-600 transition-all ${currentView === 'category' ? 'text-blue-600' : ''}`}>分類管理</button>
+        </div>
+      </header>
+
+      {/* 主內容區 */}
+      <main className="flex-1 p-6 md:p-12 max-w-6xl mx-auto w-full pb-32">
+        {renderContent()}
+      </main>
+
+      {/* 底部導覽列 (Bottom Navigation - 手機版優化) */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-2xl border-t border-slate-100 px-6 py-4 flex justify-around items-center z-40 shadow-[0_-15px_30px_rgba(0,0,0,0.03)]">
+        <button onClick={() => { setCurrentView('add'); setViewingCategory(null); }} className={`flex flex-col items-center gap-1.5 transition-all ${currentView === 'add' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}>
+          <div className={`p-2.5 rounded-2xl ${currentView === 'add' ? 'bg-blue-50 shadow-inner' : ''}`}><Plus size={26} strokeWidth={3} /></div>
+          <span className="text-[10px] font-black uppercase tracking-widest">新增</span>
+        </button>
+
+        <button onClick={() => { setCurrentView('list'); setViewingCategory(null); }} className={`flex flex-col items-center gap-1.5 transition-all ${currentView === 'list' || currentView === 'details' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}>
+          <div className={`p-2.5 rounded-2xl ${currentView === 'list' || currentView === 'details' ? 'bg-blue-50 shadow-inner' : ''}`}><LayoutGrid size={26} strokeWidth={3} /></div>
+          <span className="text-[10px] font-black uppercase tracking-widest">查詢</span>
+        </button>
+
+        <button onClick={() => { setCurrentView('category'); setViewingCategory(null); }} className={`flex flex-col items-center gap-1.5 transition-all ${currentView === 'category' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}>
+          <div className={`p-2.5 rounded-2xl ${currentView === 'category' ? 'bg-blue-50 shadow-inner' : ''}`}><Tag size={26} strokeWidth={3} /></div>
+          <span className="text-[10px] font-black uppercase tracking-widest">分類</span>
+        </button>
+      </nav>
+    </div>
+  );
+};
+
+export default App;
